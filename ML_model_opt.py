@@ -84,7 +84,7 @@ class DropCollinear(BaseEstimator, TransformerMixin):
         return {'thresh': self.thresh}
 
 #Optimisation parameter for SVM classifier
-def optimise_SVC_featsel(X, y, cut, cv=5, label='Response', prefix='someresponse'):
+def optimise_SVC_featsel(X, y, cut, cv=5, metric='roc_auc', label='Response', prefix='someresponse'):
     # Pipeline components
     scaler = StandardScaler()
     kbest = SelectAtMostKBest(score_func=f_classif)
@@ -98,7 +98,7 @@ def optimise_SVC_featsel(X, y, cut, cv=5, label='Response', prefix='someresponse
                     'svc__C': np.logspace(-3,3,60)}
 
     # Optimisation
-    search = RandomizedSearchCV(pipe, param_grid, iid=False, cv=cv, scoring='roc_auc',return_train_score=True, n_jobs=-1, verbose=0, n_iter=1000, random_state=0)
+    search = RandomizedSearchCV(pipe, param_grid, iid=False, cv=cv, scoring=metric,return_train_score=True, n_jobs=-1, verbose=0, n_iter=1000, random_state=0)
     search.fit(X,y)
 
     return search
@@ -123,7 +123,7 @@ def optimise_logres_featsel(X, y, cut, cv=5, label='Response', prefix='somerespo
 
 
 #Optimisation parameter for Random Forest classifier
-def optimise_rf_featsel(X, y, cut, cv=5, label='Response', prefix='someresponse'):
+def optimise_rf_featsel(X, y, cut, cv=5, metric='roc_auc',label='Response', prefix='someresponse'):
     # Pipeline components
     scaler = StandardScaler()
     kbest = SelectAtMostKBest(score_func=f_classif)
@@ -138,11 +138,27 @@ def optimise_rf_featsel(X, y, cut, cv=5, label='Response', prefix='someresponse'
                     "rf__min_samples_split": [2, 3, 6, 10, 12, 15]
                     }
     # Optimisation
-    search = RandomizedSearchCV(pipe, param_grid, iid=False, cv=cv, scoring='roc_auc',return_train_score=True, n_jobs=-1, verbose=0,n_iter=1000, random_state=1)
+    search = RandomizedSearchCV(pipe, param_grid, iid=False, cv=cv, scoring=metric,return_train_score=True, n_jobs=-1, verbose=0,n_iter=1000, random_state=1)
     search.fit(X,y)
 
     return search
 
+
+class JointModel:
+    def __init__(self, mod_recall, mod_precision):
+        self.mod_recall = mod_recall
+        self.mod_precision = mod_precision
+
+    def predict(self, X):
+        first_step = self.mod_recall.predict(X)
+        # these passed the high-recall model; you can feed them to the
+        # high-precision model
+        masked_X = X[first_step]
+        second_step = self.mod_precision.predict(masked_X)
+        # compose the results back into one prediction vector
+        prediction = first_step
+        prediction[first_step] = second_step
+        return prediction
 
 
 
@@ -165,7 +181,7 @@ dataset_RG=dataset_RG.sort_values(by=['Image'])
 #get image name to compare it with metadata info
 col_one_arr = dataset_RG['Image'].to_numpy()
 #don't need Image column anymore -> removing later after join
-# datatest_RG=dataset_RG.drop('Image',axis=1)
+datatest_RG=dataset_RG.drop('Image',axis=1)
 
 #METADATA RG
 #collect metadata and relapse status info
@@ -203,16 +219,16 @@ target_RG=Dataset_Meta_RG.loc[:,"Recurrence"].values
 target_RG=target_RG.astype(int)
 #Wavelet and non-Wavelet feature dataset
 # NON CLINICAL DATA included
-# datatest_RG_W=datatest_RG  #all wavelet
-# datatest_RG_NW=datatest_RG.iloc[:,0:107] #no-wavelet
+datatest_RG_W=datatest_RG  #all wavelet
+datatest_RG_NW=datatest_RG.iloc[:,0:107] #no-wavelet
 # CLINICAL DATA included
-datatest_RG_W=pd.merge(dataset_RG, Dataset_Meta_RG, on="Image")  #all wavelet
-datatest_RG_NW=dataset_RG.iloc[:,0:107] #no-wavelet
-datatest_RG_NW=pd.merge(datatest_RG_NW, Dataset_Meta_RG, on="Image")  #no wavelet
-datatest_RG_W=datatest_RG_W.drop('Image',axis=1)
-datatest_RG_W=datatest_RG_W.drop('Recurrence',axis=1)
-datatest_RG_NW=datatest_RG_NW.drop('Image',axis=1)
-datatest_RG_NW=datatest_RG_NW.drop('Recurrence',axis=1)
+# datatest_RG_W=pd.merge(dataset_RG, Dataset_Meta_RG, on="Image")  #all wavelet
+# datatest_RG_NW=dataset_RG.iloc[:,0:107] #no-wavelet
+# datatest_RG_NW=pd.merge(datatest_RG_NW, Dataset_Meta_RG, on="Image")  #no wavelet
+# datatest_RG_W=datatest_RG_W.drop('Image',axis=1)
+# datatest_RG_W=datatest_RG_W.drop('Recurrence',axis=1)
+# datatest_RG_NW=datatest_RG_NW.drop('Image',axis=1)
+# datatest_RG_NW=datatest_RG_NW.drop('Recurrence',axis=1)
 
 ## Klinik dataset 
 #cleaning and preparation
@@ -263,8 +279,8 @@ Dataset_Meta_kl_new['Age_Diag'] = Dataset_Meta_kl_new["Age_Diag"] / timedelta(da
 # target_kl=[1,0,1,1,0,0,1,1,1,1,0,1,0,1,0,0,1,1,0,0,1,0,0,0,0,1,1,0,1,0,1,1,0,0,0,0,0,1,0,1,1,1,0,0,0,1,0,0,0,1,1,0,1,1,0,0,0,0,0,0,1,1,0,0,1,0,1]
 Dataset_Meta_kl_new=Dataset_Meta_kl_new.rename(columns={"Nummer": "Image"})
 # CLINICAL DATA included
-datatest_kl_W=pd.merge(datatest_kl_W, Dataset_Meta_kl_new, on="Image")  #all wavelet
-datatest_kl_NW=pd.merge(datatest_kl_NW, Dataset_Meta_kl_new, on="Image")  #no wavelet
+# datatest_kl_W=pd.merge(datatest_kl_W, Dataset_Meta_kl_new, on="Image")  #all wavelet
+# datatest_kl_NW=pd.merge(datatest_kl_NW, Dataset_Meta_kl_new, on="Image")  #no wavelet
 datatest_kl_W=datatest_kl_W.drop('Image',axis=1)
 datatest_kl_NW=datatest_kl_NW.drop('Image',axis=1)
 
@@ -298,33 +314,49 @@ split_W = defineSplits(trainset_W,traintarget,random_state=0)
 split_NW = defineSplits(trainset_NW,traintarget,random_state=0)
 #RUN the 3 classifier to get the best parameters
 #NON WAVELET
-svc_result_NW = optimise_SVC_featsel(trainset_NW,traintarget,cut=0.9,cv=split_NW)
-logres_result_NW = optimise_logres_featsel(trainset_NW,traintarget,cut=0.9,metric='roc_auc',cv=split_NW)
-rf_result_NW = optimise_rf_featsel(trainset_NW,traintarget,cut=0.9,cv=split_NW)
+#recall
+svc_result_NW_r = optimise_SVC_featsel(trainset_NW,traintarget,metric='recall',cut=0.9,cv=split_NW)
+logres_result_NW_r = optimise_logres_featsel(trainset_NW,traintarget,cut=0.9,metric='recall',cv=split_NW)
+rf_result_NW_r = optimise_rf_featsel(trainset_NW,traintarget,cut=0.9,metric='recall',cv=split_NW)
+#precision
+svc_result_NW_p = optimise_SVC_featsel(trainset_NW,traintarget,metric='precision',cut=0.9,cv=split_NW)
+logres_result_NW_p = optimise_logres_featsel(trainset_NW,traintarget,cut=0.9,metric='precision',cv=split_NW)
+rf_result_NW_p = optimise_rf_featsel(trainset_NW,traintarget,cut=0.9,metric='precision',cv=split_NW)
 #WAVELET
-svc_result_W = optimise_SVC_featsel(trainset_W,traintarget,cut=0.9,cv=split_W)
-logres_result_W = optimise_logres_featsel(trainset_W,traintarget,cut=0.9,metric='roc_auc',cv=split_W)
-rf_result_W = optimise_rf_featsel(trainset_W,traintarget,cut=0.9,cv=split_W)
+#recall
+svc_result_W_r = optimise_SVC_featsel(trainset_W,traintarget,cut=0.9,metric='recall',cv=split_W)
+logres_result_W_r = optimise_logres_featsel(trainset_W,traintarget,cut=0.9,metric='recall',cv=split_W)
+rf_result_W_r = optimise_rf_featsel(trainset_W,traintarget,cut=0.9,metric='recall',cv=split_W)
+#precision
+svc_result_W_p = optimise_SVC_featsel(trainset_W,traintarget,cut=0.9,metric='precision',cv=split_W)
+logres_result_W_p = optimise_logres_featsel(trainset_W,traintarget,cut=0.9,metric='precision',cv=split_W)
+rf_result_W_p = optimise_rf_featsel(trainset_W,traintarget,cut=0.9,metric='precision',cv=split_W)
 #FIT THE MODEL WITH THE BEST PARAMS
 #SVC
-svc_result_NW.best_estimator_.fit(testset_NW,testtarget)
-svc_result_W.best_estimator_.fit(testset_W,testtarget)
+svc_result_NW=JointModel(svc_result_NW_r.best_estimator_,svc_result_NW_p.best_estimator_)
+svc_result_NW.fit(testset_NW,testtarget)
+svc_result_W=JointModel(svc_result_W_r.best_estimator_,svc_result_W_p.best_estimator_)
+svc_result_W.fit(testset_W,testtarget)
 #LOGRES
-logres_result_NW.best_estimator_.fit(testset_NW,testtarget)
+logres_result_NW=JointModel(logres_result_NW_r.best_estimator_,logres_result_NW_p.best_estimator_)
+logres_result_NW.fit(testset_NW,testtarget)
+logres_result_W=JointModel(logres_result_W_r.best_estimator_,logres_result_W_p.best_estimator_)
 logres_result_W.best_estimator_.fit(testset_W,testtarget)
 #RANDOM FOREST
-rf_result_NW.best_estimator_.fit(testset_NW,testtarget)
-rf_result_W.best_estimator_.fit(testset_W,testtarget)
+rf_result_NW=JointModel(rf_result_NW_r.best_estimator_,rf_result_NW_p.best_estimator_)
+rf_result_NW.fit(testset_NW,testtarget)
+rf_result_W=JointModel(rf_result_W_r.best_estimator_,rf_result_W_p.best_estimator_)
+rf_result_W.fit(testset_W,testtarget)
 #PREDICTION:
 #SVC
-y_pred_svc_nw=svc_result_NW.best_estimator_.predict(testset_NW)
-y_pred_svc_w=svc_result_W.best_estimator_.predict(testset_W)
+y_pred_svc_nw=svc_result_NW.predict(testset_NW)
+y_pred_svc_w=svc_result_W.predict(testset_W)
 #LOGRES
-y_pred_logres_nw=logres_result_NW.best_estimator_.predict(testset_NW)
-y_pred_logres_w=logres_result_W.best_estimator_.predict(testset_W)
+y_pred_logres_nw=logres_result_NW.predict(testset_NW)
+y_pred_logres_w=logres_result_W.predict(testset_W)
 #RANDOM FOREST
-y_pred_rf_nw=rf_result_NW.best_estimator_.predict(testset_NW)
-y_pred_rf_w=rf_result_W.best_estimator_.predict(testset_W)
+y_pred_rf_nw=rf_result_NW.predict(testset_NW)
+y_pred_rf_w=rf_result_W.predict(testset_W)
 
 ##PLOT
 #Confusion matrix
