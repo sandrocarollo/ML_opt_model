@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 ### IMPORT
+from telnetlib import OLD_ENVIRON
 import pandas as pd
 import numpy as np
 import seaborn as sns
@@ -109,7 +110,7 @@ def optimise_logres_featsel(X, y, cut, cv=5, label='Response', prefix='somerespo
     scaler = StandardScaler()
     kbest = SelectAtMostKBest(score_func=f_classif)
     dropcoll = DropCollinear(cut)
-    logres = LogisticRegression(random_state=1, penalty='elasticnet', solver='saga', max_iter=10000, n_jobs=-1, class_weight=True)
+    logres = LogisticRegression(random_state=1, penalty='elasticnet', solver='saga', max_iter=10000, n_jobs=-1, class_weight='balanced')
     pipe = Pipeline(steps=[('dropcoll', dropcoll), ('scaler', scaler), ('kbest', kbest), ('logres', logres)])
     # Parameter ranges
     param_grid = { 'kbest__k': np.arange(2,X.shape[1],1),
@@ -163,14 +164,17 @@ class JointModel:
 
 
 
-###DATASET READ
+##################DATASET READ##################
+
 #Radiogenomics dataset + Meta info and Klinik dataset
 Dataset_RG = pd.read_csv('./input/NSCLC_features_results_RG.csv',sep=',', header=0)
 Dataset_Meta_RG = pd.read_csv('./input/NSCLCR01Radiogenomic_DATA_LABELS_2018-05-22_1500-shifted.csv',sep=',', header=0)
-Dataset_kl = pd.read_csv('./input/NSCLC_features_results_kl.csv',sep=',', header=0)
-Dataset_Meta_kl = pd.read_excel("./input/NSCLC_TLS_Projekt_09_20_AL_anonym.xlsx", sheet_name='NSCLC_TLS_Projekt_09_20')
+# Dataset_kl = pd.read_csv('./input/NSCLC_features_results_kl.csv',sep=',', header=0)
+# Dataset_Meta_kl = pd.read_excel("./input/NSCLC_TLS_Projekt_09_20_AL_anonym.xlsx", sheet_name='NSCLC_TLS_Projekt_09_20')
+Dataset_kl_22 = pd.read_csv('./input/NSCLC_features_results_kl_2022.csv',sep=',', header=0)
+Dataset_Meta_kl_22 = pd.read_excel("./input/NSCLC_Patientenliste.xlsx", sheet_name='alte und neue Pat daten')
 
-## RG dataset
+### RG dataset ###
 #removing non needed column
 cols = [*range(1, 39, 1)]
 dataset_RG=Dataset_RG.drop(Dataset_RG.columns[cols],axis=1)
@@ -181,9 +185,9 @@ dataset_RG=dataset_RG.sort_values(by=['Image'])
 #get image name to compare it with metadata info
 col_one_arr = dataset_RG['Image'].to_numpy()
 #don't need Image column anymore -> removing later after join
-datatest_RG=dataset_RG.drop('Image',axis=1)
+# datatest_RG=dataset_RG.drop('Image',axis=1)
 
-#METADATA RG
+### METADATA RG ###
 #collect metadata and relapse status info
 Dataset_Meta_RG=Dataset_Meta_RG.loc[:,["Case ID","Pathological T stage","Pathological N stage","Pathological M stage","Recurrence","Age at Histological Diagnosis"]]
 Dataset_Meta_RG=Dataset_Meta_RG.loc[Dataset_Meta_RG['Case ID'].isin(col_one_arr)]
@@ -219,72 +223,75 @@ target_RG=Dataset_Meta_RG.loc[:,"Recurrence"].values
 target_RG=target_RG.astype(int)
 #Wavelet and non-Wavelet feature dataset
 # NON CLINICAL DATA included
-datatest_RG_W=datatest_RG  #all wavelet
-datatest_RG_NW=datatest_RG.iloc[:,0:107] #no-wavelet
+# datatest_RG_W=datatest_RG  #all wavelet
+# datatest_RG_NW=datatest_RG.iloc[:,0:107] #no-wavelet
 # CLINICAL DATA included
-# datatest_RG_W=pd.merge(dataset_RG, Dataset_Meta_RG, on="Image")  #all wavelet
-# datatest_RG_NW=dataset_RG.iloc[:,0:107] #no-wavelet
-# datatest_RG_NW=pd.merge(datatest_RG_NW, Dataset_Meta_RG, on="Image")  #no wavelet
-# datatest_RG_W=datatest_RG_W.drop('Image',axis=1)
-# datatest_RG_W=datatest_RG_W.drop('Recurrence',axis=1)
-# datatest_RG_NW=datatest_RG_NW.drop('Image',axis=1)
-# datatest_RG_NW=datatest_RG_NW.drop('Recurrence',axis=1)
+datatest_RG_W=pd.merge(dataset_RG, Dataset_Meta_RG, on="Image")  #all wavelet
+datatest_RG_NW=dataset_RG.iloc[:,0:108] #no-wavelet
+datatest_RG_NW=pd.merge(datatest_RG_NW, Dataset_Meta_RG, on="Image")  #no wavelet
+datatest_RG_W=datatest_RG_W.drop('Image',axis=1)
+datatest_RG_W=datatest_RG_W.drop('Recurrence',axis=1)
+datatest_RG_NW=datatest_RG_NW.drop('Image',axis=1)
+datatest_RG_NW=datatest_RG_NW.drop('Recurrence',axis=1)
 
-## Klinik dataset 
+### Klinik dataset ###
 #cleaning and preparation
 #keepin first column for sorting
 cols = [*range(1, 39, 1)]
-Dataset_kl=Dataset_kl.drop(Dataset_kl.columns[cols],axis=1)
+Dataset_kl_22=Dataset_kl_22.drop(Dataset_kl_22.columns[cols],axis=1)
 #keeping only the number in the name for sort
-Dataset_kl['Image'] = Dataset_kl['Image'].apply(splitname)
+Dataset_kl_22['Image'] = Dataset_kl_22['Image'].apply(splitname)
 #converting string to number
-Dataset_kl.Image = Dataset_kl.Image.astype(int)
+Dataset_kl_22.Image = Dataset_kl_22.Image.astype(int)
 #actual sort
-Dataset_kl=Dataset_kl.sort_values(by=['Image'])
+Dataset_kl_22=Dataset_kl_22.sort_values(by=['Image'])
 # non wavelet
-datatest_kl_NW=Dataset_kl.iloc[:,0:108]
+datatest_kl_NW=Dataset_kl_22.iloc[:,0:108]
 # wavelet
-datatest_kl_W=Dataset_kl
+datatest_kl_W=Dataset_kl_22
 
 # Dataset_kl=Dataset_kl.iloc[:,39::]
 # datatest_kl_W=Dataset_kl #all wavelet
 # datatest_kl_NW=Dataset_kl.iloc[:,0:107] #no-wavelet
 
-#METADATA kl
-# had to remove some blank rows.....
-Dataset_Meta_kl=Dataset_Meta_kl.loc[0:74,:]
+### METADATA kl 2022 ###
+#Remove a patient duplicate
+Dataset_Meta_kl_22=Dataset_Meta_kl_22.drop([63])
+#renaming IDs
+Dataset_Meta_kl_22=Dataset_Meta_kl_22.rename(columns={"Subject ID": "Image"})
 #converting string to int
-Dataset_Meta_kl.Nummer = Dataset_Meta_kl.Nummer.astype(int)
+Dataset_Meta_kl_22.Image = Dataset_Meta_kl_22.Image.astype(int)
 #sort them
-Dataset_Meta_kl=Dataset_Meta_kl.sort_values(by=['Nummer'])
-#getting only the intersection between the two datasets
-col_meta_kl = Dataset_Meta_kl['Nummer'].to_numpy()
+Dataset_Meta_kl_22=Dataset_Meta_kl_22.sort_values(by=['Image'])
+#keeping only the info that we need for the algo
+klinik_meta_1=Dataset_Meta_kl_22.loc[:,["Image","Rezidiv","pT","pN","pM"]]
+#calculating diagnose age
+klinik_meta_1['Age_Diag'] = Dataset_Meta_kl_22['Date of diagnosis'] - Dataset_Meta_kl_22['DOB']
+klinik_meta_1['Age_Diag'] = klinik_meta_1["Age_Diag"] / timedelta(days=365)
+#getting only the interesetion between the two 
+col_meta_kl = klinik_meta_1['Image'].to_numpy()
 col_data_kl = datatest_kl_NW['Image'].to_numpy()
 Img_intersec=np.intersect1d(col_data_kl,col_meta_kl)
-Dataset_Meta_kl=Dataset_Meta_kl.loc[Dataset_Meta_kl['Nummer'].isin(Img_intersec)]
-#Klinik dataset target vector
-#need to remove a patient
-Dataset_Meta_kl = Dataset_Meta_kl[Dataset_Meta_kl.Rezidiv != 2]
-Dataset_Meta_kl = Dataset_Meta_kl[Dataset_Meta_kl.Nummer != 128] #extra to remove cause of pTNM missing
-#48 is the image with no relapse info, need to remove from the Radiomics dataset
-datatest_kl_W = datatest_kl_W[datatest_kl_W.Image != 48]
-datatest_kl_NW = datatest_kl_NW[datatest_kl_NW.Image != 48]
-datatest_kl_W = datatest_kl_W[datatest_kl_W.Image != 128]
-datatest_kl_NW = datatest_kl_NW[datatest_kl_NW.Image != 128]
-target_kl=Dataset_Meta_kl.loc[:,"Rezidiv"].values
-target_kl=target_kl.astype(int)
-Dataset_Meta_kl_new=Dataset_Meta_kl.loc[:,["Nummer","pT","pN","pM"]]
-Dataset_Meta_kl_new['Age_Diag'] = Dataset_Meta_kl['DiagDat'] - Dataset_Meta_kl['Geb']
-Dataset_Meta_kl_new['Age_Diag'] = Dataset_Meta_kl_new["Age_Diag"] / timedelta(days=365)
-# target_kl=[1,0,1,1,0,0,1,1,1,1,0,1,0,1,0,0,1,1,0,0,1,0,0,0,0,1,1,0,1,0,1,1,0,0,0,0,0,1,0,1,1,1,0,0,0,1,0,0,0,1,1,0,1,1,0,0,0,0,0,0,1,1,0,0,1,0,1]
-Dataset_Meta_kl_new=Dataset_Meta_kl_new.rename(columns={"Nummer": "Image"})
-# CLINICAL DATA included
-# datatest_kl_W=pd.merge(datatest_kl_W, Dataset_Meta_kl_new, on="Image")  #all wavelet
-# datatest_kl_NW=pd.merge(datatest_kl_NW, Dataset_Meta_kl_new, on="Image")  #no wavelet
-datatest_kl_W=datatest_kl_W.drop('Image',axis=1)
-datatest_kl_NW=datatest_kl_NW.drop('Image',axis=1)
+klinik_meta_1=klinik_meta_1.loc[klinik_meta_1['Image'].isin(Img_intersec)]
+#need to remove 2 patients, one doesn't have relapse info, the other TNM class info
+klinik_meta_1 = klinik_meta_1[klinik_meta_1.Image != 2002951366]
+klinik_meta_1 = klinik_meta_1[klinik_meta_1.Image != 2203043174]
 
-## TRAIN AND TEST SET
+datatest_kl_NW = datatest_kl_NW[datatest_kl_NW.Image != 2002951366]
+datatest_kl_NW = datatest_kl_NW[datatest_kl_NW.Image != 2203043174]
+
+datatest_kl_W = datatest_kl_W[datatest_kl_W.Image != 2002951366]
+datatest_kl_W = datatest_kl_W[datatest_kl_W.Image != 2203043174]
+#merge meta and radiomics
+datatest_kl_NW = pd.merge(datatest_kl_NW,klinik_meta_1, on="Image")
+datatest_kl_W = pd.merge(datatest_kl_W,klinik_meta_1, on="Image")
+target_kl=datatest_kl_W.loc[:,"Rezidiv"].values
+target_kl=target_kl.astype(int)
+#don't need Image name and Relapse anymore
+datatest_kl_W=datatest_kl_W.drop(['Image','Rezidiv'],axis=1)
+datatest_kl_NW=datatest_kl_NW.drop(['Image','Rezidiv'],axis=1)
+
+### TRAIN AND TEST SET ###
 
 #MERGING the 2 dataset
 frame_W = [datatest_kl_W,datatest_RG_W]
@@ -308,57 +315,41 @@ testtarget=y_test
 # testset_NW=datatest_kl_NW
 # testtarget=target_kl
 
-## FEATURE SELECTION AND PARAMETER OPTIMISATION
+### FEATURE SELECTION AND PARAMETER OPTIMISATION ###
 #Get splits for trainset
 split_W = defineSplits(trainset_W,traintarget,random_state=0)
 split_NW = defineSplits(trainset_NW,traintarget,random_state=0)
 #RUN the 3 classifier to get the best parameters
 #NON WAVELET
-#recall
-svc_result_NW_r = optimise_SVC_featsel(trainset_NW,traintarget,metric='recall',cut=0.9,cv=split_NW)
-logres_result_NW_r = optimise_logres_featsel(trainset_NW,traintarget,cut=0.9,metric='recall',cv=split_NW)
-rf_result_NW_r = optimise_rf_featsel(trainset_NW,traintarget,cut=0.9,metric='recall',cv=split_NW)
-#precision
-svc_result_NW_p = optimise_SVC_featsel(trainset_NW,traintarget,metric='precision',cut=0.9,cv=split_NW)
-logres_result_NW_p = optimise_logres_featsel(trainset_NW,traintarget,cut=0.9,metric='precision',cv=split_NW)
-rf_result_NW_p = optimise_rf_featsel(trainset_NW,traintarget,cut=0.9,metric='precision',cv=split_NW)
+svc_result_NW = optimise_SVC_featsel(trainset_NW,traintarget,metric='roc_auc',cut=0.9,cv=split_NW)
+logres_result_NW = optimise_logres_featsel(trainset_NW,traintarget,cut=0.9,metric='roc_auc',cv=split_NW)
+rf_result_NW = optimise_rf_featsel(trainset_NW,traintarget,cut=0.9,metric='roc_auc',cv=split_NW)
 #WAVELET
-#recall
-svc_result_W_r = optimise_SVC_featsel(trainset_W,traintarget,cut=0.9,metric='recall',cv=split_W)
-logres_result_W_r = optimise_logres_featsel(trainset_W,traintarget,cut=0.9,metric='recall',cv=split_W)
-rf_result_W_r = optimise_rf_featsel(trainset_W,traintarget,cut=0.9,metric='recall',cv=split_W)
-#precision
-svc_result_W_p = optimise_SVC_featsel(trainset_W,traintarget,cut=0.9,metric='precision',cv=split_W)
-logres_result_W_p = optimise_logres_featsel(trainset_W,traintarget,cut=0.9,metric='precision',cv=split_W)
-rf_result_W_p = optimise_rf_featsel(trainset_W,traintarget,cut=0.9,metric='precision',cv=split_W)
+svc_result_W = optimise_SVC_featsel(trainset_W,traintarget,cut=0.9,metric='roc_auc',cv=split_W)
+logres_result_W = optimise_logres_featsel(trainset_W,traintarget,cut=0.9,metric='roc_auc',cv=split_W)
+rf_result_W = optimise_rf_featsel(trainset_W,traintarget,cut=0.9,metric='roc_auc',cv=split_W)
 #FIT THE MODEL WITH THE BEST PARAMS
 #SVC
-svc_result_NW=JointModel(svc_result_NW_r.best_estimator_,svc_result_NW_p.best_estimator_)
-svc_result_NW.fit(testset_NW,testtarget)
-svc_result_W=JointModel(svc_result_W_r.best_estimator_,svc_result_W_p.best_estimator_)
-svc_result_W.fit(testset_W,testtarget)
+svc_result_NW.best_estimator_.fit(testset_NW,testtarget)
+svc_result_W.best_estimator_.fit(testset_W,testtarget)
 #LOGRES
-logres_result_NW=JointModel(logres_result_NW_r.best_estimator_,logres_result_NW_p.best_estimator_)
-logres_result_NW.fit(testset_NW,testtarget)
-logres_result_W=JointModel(logres_result_W_r.best_estimator_,logres_result_W_p.best_estimator_)
+logres_result_NW.best_estimator_.fit(testset_NW,testtarget)
 logres_result_W.best_estimator_.fit(testset_W,testtarget)
 #RANDOM FOREST
-rf_result_NW=JointModel(rf_result_NW_r.best_estimator_,rf_result_NW_p.best_estimator_)
-rf_result_NW.fit(testset_NW,testtarget)
-rf_result_W=JointModel(rf_result_W_r.best_estimator_,rf_result_W_p.best_estimator_)
-rf_result_W.fit(testset_W,testtarget)
+rf_result_NW.best_estimator_.fit(testset_NW,testtarget)
+rf_result_W.best_estimator_.fit(testset_W,testtarget)
 #PREDICTION:
 #SVC
-y_pred_svc_nw=svc_result_NW.predict(testset_NW)
-y_pred_svc_w=svc_result_W.predict(testset_W)
+y_pred_svc_nw=svc_result_NW.best_estimator_.predict(testset_NW)
+y_pred_svc_w=svc_result_W.best_estimator_.predict(testset_W)
 #LOGRES
-y_pred_logres_nw=logres_result_NW.predict(testset_NW)
-y_pred_logres_w=logres_result_W.predict(testset_W)
+y_pred_logres_nw=logres_result_NW.best_estimator_.predict(testset_NW)
+y_pred_logres_w=logres_result_W.best_estimator_.predict(testset_W)
 #RANDOM FOREST
-y_pred_rf_nw=rf_result_NW.predict(testset_NW)
-y_pred_rf_w=rf_result_W.predict(testset_W)
+y_pred_rf_nw=rf_result_NW.best_estimator_.predict(testset_NW)
+y_pred_rf_w=rf_result_W.best_estimator_.predict(testset_W)
 
-##PLOT
+### PLOT ###
 #Confusion matrix
 #SVC
 plot_confusion_matrix(svc_result_NW, testset_NW, testtarget,cmap=plt.cm.Blues)  
