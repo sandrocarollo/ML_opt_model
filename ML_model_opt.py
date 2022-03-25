@@ -145,23 +145,6 @@ def optimise_rf_featsel(X, y, cut, cv=5, metric='roc_auc',label='Response', pref
     return search
 
 
-class JointModel:
-    def __init__(self, mod_recall, mod_precision):
-        self.mod_recall = mod_recall
-        self.mod_precision = mod_precision
-
-    def predict(self, X):
-        first_step = self.mod_recall.predict(X)
-        # these passed the high-recall model; you can feed them to the
-        # high-precision model
-        masked_X = X[first_step]
-        second_step = self.mod_precision.predict(masked_X)
-        # compose the results back into one prediction vector
-        prediction = first_step
-        prediction[first_step] = second_step
-        return prediction
-
-
 
 
 ##################DATASET READ##################
@@ -298,7 +281,7 @@ frame_W = [datatest_kl_W,datatest_RG_W]
 datatest_full_W = pd.concat(frame_W)
 target_full = np.concatenate((target_kl, target_RG), axis=None)
 # Split FULL dataset into training set and test set
-X_train_W, X_test1_W, y_train, y_test = train_test_split(datatest_full_W, target_full, test_size=0.3,random_state=100) # 70% training and 30% test
+X_train_W, X_test1_W, y_train, y_test = train_test_split(datatest_kl_W, target_kl, test_size=0.3,random_state=100) # 70% training and 30% test
 
 trainset_W=X_train_W
 trainset_NW=X_train_W.iloc[:,0:107]
@@ -308,36 +291,35 @@ testset_NW=X_test1_W.iloc[:,0:107]
 testtarget=y_test
 
 ## OLD
-# trainset_W=datatest_RG_W
-# trainset_NW=datatest_RG_NW
-# traintarget=target_RG
-# testset_W=datatest_kl_W
-# testset_NW=datatest_kl_NW
-# testtarget=target_kl
+# trainset_W=datatest_kl_W
+# trainset_NW=datatest_kl_NW
+# traintarget=target_kl
+# testset_W=datatest_RG_W
+# testset_NW=datatest_RG_NW
+# testtarget=target_RG
 
 ### FEATURE SELECTION AND PARAMETER OPTIMISATION ###
 #Get splits for trainset
-split_W = defineSplits(trainset_W,traintarget,random_state=0)
-split_NW = defineSplits(trainset_NW,traintarget,random_state=0)
+split = defineSplits(trainset_W,traintarget,random_state=0)
 #RUN the 3 classifier to get the best parameters
 #NON WAVELET
-svc_result_NW = optimise_SVC_featsel(trainset_NW,traintarget,metric='roc_auc',cut=0.9,cv=split_NW)
-logres_result_NW = optimise_logres_featsel(trainset_NW,traintarget,cut=0.9,metric='roc_auc',cv=split_NW)
-rf_result_NW = optimise_rf_featsel(trainset_NW,traintarget,cut=0.9,metric='roc_auc',cv=split_NW)
+svc_result_NW = optimise_SVC_featsel(trainset_NW,traintarget,metric='roc_auc',cut=0.9,cv=split)
+logres_result_NW = optimise_logres_featsel(trainset_NW,traintarget,cut=0.9,metric='roc_auc',cv=split)
+rf_result_NW = optimise_rf_featsel(trainset_NW,traintarget,cut=0.9,metric='roc_auc',cv=split)
 #WAVELET
-svc_result_W = optimise_SVC_featsel(trainset_W,traintarget,cut=0.9,metric='roc_auc',cv=split_W)
-logres_result_W = optimise_logres_featsel(trainset_W,traintarget,cut=0.9,metric='roc_auc',cv=split_W)
-rf_result_W = optimise_rf_featsel(trainset_W,traintarget,cut=0.9,metric='roc_auc',cv=split_W)
+svc_result_W = optimise_SVC_featsel(trainset_W,traintarget,cut=0.9,metric='roc_auc',cv=split)
+logres_result_W = optimise_logres_featsel(trainset_W,traintarget,cut=0.9,metric='roc_auc',cv=split)
+rf_result_W = optimise_rf_featsel(trainset_W,traintarget,cut=0.9,metric='roc_auc',cv=split)
 #FIT THE MODEL WITH THE BEST PARAMS
 #SVC
-svc_result_NW.best_estimator_.fit(testset_NW,testtarget)
-svc_result_W.best_estimator_.fit(testset_W,testtarget)
+svc_result_NW.best_estimator_.fit(trainset_NW,traintarget)
+svc_result_W.best_estimator_.fit(trainset_W,traintarget)
 #LOGRES
-logres_result_NW.best_estimator_.fit(testset_NW,testtarget)
-logres_result_W.best_estimator_.fit(testset_W,testtarget)
+logres_result_NW.best_estimator_.fit(trainset_NW,traintarget)
+logres_result_W.best_estimator_.fit(trainset_W,traintarget)
 #RANDOM FOREST
-rf_result_NW.best_estimator_.fit(testset_NW,testtarget)
-rf_result_W.best_estimator_.fit(testset_W,testtarget)
+rf_result_NW.best_estimator_.fit(trainset_NW,traintarget)
+rf_result_W.best_estimator_.fit(trainset_W,traintarget)
 #PREDICTION:
 #SVC
 y_pred_svc_nw=svc_result_NW.best_estimator_.predict(testset_NW)
